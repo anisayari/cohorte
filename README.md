@@ -1,8 +1,8 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## IA Personas & Analyse (Nouveautés)
+## Personas & Analysis (New)
 
-Two new API routes and UI actions are available to generate personas and analyze text with persona-driven judgments and structured outputs.
+Two API routes and UI actions let you generate personas and analyze text with persona‑driven judgments and structured outputs.
 
 API routes:
 
@@ -16,9 +16,9 @@ Configuration:
 
 UI:
 
-- In the editor (`/editor`), the toolbar includes two buttons:
-  - "Générer des populations (5)": creates 5 personas and lists them below the editor.
-  - "Analyser": sends the editor’s text to `/api/analyze` with the generated personas and highlights chunks:
+- In the editor (`/editor`), you can:
+  - "Generate population (5)": create 5 personas and list them below the editor.
+  - "Analyze": send the editor’s text to `/api/analyze` with the personas and highlight chunks:
     - Green: very good
     - Red: not good
     - Yellow: mixed/neutral

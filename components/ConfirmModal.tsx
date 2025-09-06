@@ -20,8 +20,8 @@ export default function ConfirmModal({
   onConfirm,
   title,
   message,
-  confirmText = 'Confirmer',
-  cancelText = 'Annuler',
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
   type = 'warning'
 }: ConfirmModalProps) {
   if (!isOpen) return null;

@@ -1,25 +1,39 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Users, User, ChevronRight, ChevronLeft, Trash2, Check, Square, CheckSquare } from 'lucide-react';
+import { Users, User, ChevronRight, ChevronLeft, Trash2, Square, CheckSquare } from 'lucide-react';
 import PersonaDetailsModal from './PersonaDetailsModal';
 import ConfirmModal from './ConfirmModal';
+import Tooltip from './Tooltip';
+
+interface Persona {
+  first_name: string;
+  last_name: string;
+  age?: number;
+  city: string;
+  profession: string;
+  values?: string[];
+  mini_description?: string;
+}
 
 interface PersonaSidebarProps {
-  personas: any[];
+  personas: Persona[];
   isOpen: boolean;
   onToggle: () => void;
   onDeletePersonas?: (indices: number[]) => void;
+  savedPops?: { id: string; seed: string; createdAt: number; personas: Persona[] }[];
+  selectedPopId?: string;
+  onLoadPopulation?: (id: string) => void;
 }
 
-export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePersonas }: PersonaSidebarProps) {
-  const [selectedPersona, setSelectedPersona] = useState<any | null>(null);
+export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePersonas, savedPops = [], selectedPopId = '', onLoadPopulation }: PersonaSidebarProps) {
+  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
-  const handlePersonaClick = (persona: any, index: number) => {
+  const handlePersonaClick = (persona: Persona, index: number) => {
     if (selectMode) {
       toggleSelection(index);
     } else {
@@ -74,53 +88,78 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
       >
         <div className="flex flex-col h-full">
           <div className="p-5 border-b border-gray-100">
+            {/* Saved populations selector at the top */}
+            {savedPops && savedPops.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-xs text-gray-600 mb-2 font-medium">Saved populations</label>
+                <select
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white hover:border-gray-300 transition-colors text-gray-700"
+                  value={selectedPopId}
+                  onChange={(e) => onLoadPopulation && onLoadPopulation(e.target.value)}
+                >
+                  <option value="">Select a population...</option>
+                  {savedPops.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {new Date(p.createdAt).toLocaleDateString()} - {p.seed ? p.seed.slice(0, 30) + '...' : 'No description'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-gray-700" />
-                <h3 className="font-semibold text-gray-900">Personas générés</h3>
+                <h3 className="font-semibold text-gray-900">Generated personas</h3>
               </div>
               {personas.length > 0 && onDeletePersonas && (
-                <button
-                  onClick={() => {
-                    setSelectMode(!selectMode);
-                    if (selectMode) {
-                      setSelectedIndices(new Set());
-                    }
-                  }}
-                  className={`text-xs px-2 py-1 rounded-lg transition-colors ${
-                    selectMode 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {selectMode ? 'Annuler' : 'Sélectionner'}
-                </button>
+                <Tooltip text={selectMode ? "Cancel selection" : "Select to delete"} position="bottom">
+                  <button
+                    onClick={() => {
+                      setSelectMode(!selectMode);
+                      if (selectMode) {
+                        setSelectedIndices(new Set());
+                      }
+                    }}
+                    className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                      selectMode 
+                        ? 'bg-gray-800 text-white' 
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {selectMode ? 'Cancel' : 'Select'}
+                  </button>
+                </Tooltip>
               )}
             </div>
             {personas.length > 0 && (
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500">
                   {selectMode && selectedIndices.size > 0 
-                    ? `${selectedIndices.size} sélectionné${selectedIndices.size > 1 ? 's' : ''}`
-                    : `${personas.length} persona${personas.length > 1 ? 's' : ''}`
+                    ? `${selectedIndices.size} selected`
+                    : `${personas.length} persona${personas.length !== 1 ? 's' : ''}`
                   }
                 </p>
                 {selectMode && (
                   <div className="flex gap-2">
-                    <button
-                      onClick={selectedIndices.size === personas.length ? deselectAll : selectAll}
-                      className="text-xs text-blue-600 hover:text-blue-700"
-                    >
-                      {selectedIndices.size === personas.length ? 'Tout désélectionner' : 'Tout sélectionner'}
-                    </button>
-                    {selectedIndices.size > 0 && (
+                    <Tooltip text={selectedIndices.size === personas.length ? "Deselect all" : "Select all"} position="bottom">
                       <button
-                        onClick={handleDeleteSelected}
-                        className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                        onClick={selectedIndices.size === personas.length ? deselectAll : selectAll}
+                        className="text-xs text-gray-600 hover:text-gray-800"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        Supprimer
+                        {selectedIndices.size === personas.length ? 'Deselect all' : 'Select all'}
                       </button>
+                    </Tooltip>
+                    {selectedIndices.size > 0 && (
+                      <Tooltip text="Delete selected personas" position="bottom">
+                        <button
+                          onClick={handleDeleteSelected}
+                          className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Delete
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 )}
@@ -132,9 +171,9 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
             {personas.length === 0 ? (
               <div className="px-5 py-12 text-center">
                 <User className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-500 text-sm">Aucun persona généré</p>
+                <p className="text-gray-500 text-sm">No personas yet</p>
                 <p className="text-gray-400 text-xs mt-2">
-                  Utilisez le bouton "Générer des populations" pour créer des personas
+                  Use the &quot;Generate personas&quot; button to create personas
                 </p>
               </div>
             ) : (
@@ -144,7 +183,7 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
                     key={index}
                     className={`group p-3 rounded-xl transition-all duration-200 border ${
                       selectedIndices.has(index) 
-                        ? 'bg-blue-50 border-blue-200' 
+                        ? 'bg-gray-100 border-gray-300' 
                         : 'hover:bg-gray-50 border-transparent hover:border-gray-200'
                     } relative`}
                   >
@@ -154,38 +193,38 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-medium text-xs">
-                            {persona.first_name[0]}{persona.last_name[0]}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center text-white font-medium text-xs">
+                              {persona.first_name[0]}{persona.last_name[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm text-gray-900 truncate">
+                                {persona.first_name} {persona.last_name}
+                              </h4>
+                              <p className="text-xs text-gray-500">
+                                {persona.age ? `${persona.age} y • ` : ''}{persona.city}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm text-gray-900 truncate">
-                              {persona.first_name} {persona.last_name}
-                            </h4>
-                            <p className="text-xs text-gray-500">
-                              {persona.age} ans • {persona.city}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-600 mt-2 line-clamp-2">
-                          {persona.mini_description}
-                        </p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
-                            {persona.profession}
-                          </span>
-                          {persona.values?.slice(0, 2).map((value: string, i: number) => (
-                            <span key={i} className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
-                              {value}
+                          <p className="text-xs text-gray-600 mt-2 line-clamp-2">
+                            {persona.mini_description}
+                          </p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                              {persona.profession}
                             </span>
-                          ))}
-                        </div>
+                            {persona.values?.slice(0, 2).map((value: string, i: number) => (
+                              <span key={i} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                {value}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                         <div className="flex items-center gap-1">
                           {selectMode ? (
                             <div className="p-1">
                               {selectedIndices.has(index) ? (
-                                <CheckSquare className="w-5 h-5 text-blue-600" />
+                                <CheckSquare className="w-5 h-5 text-gray-800" />
                               ) : (
                                 <Square className="w-5 h-5 text-gray-400" />
                               )}
@@ -204,18 +243,20 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
         </div>
       </div>
 
-      <button
-        onClick={onToggle}
-        className={`fixed top-20 bg-white hover:bg-gray-50 text-gray-700 p-2 rounded-lg shadow-md border border-gray-200 transition-all duration-300 z-30 ${
-          isOpen ? 'right-[19rem]' : 'right-4'
-        }`}
-      >
-        {isOpen ? (
-          <ChevronRight className="w-5 h-5" />
-        ) : (
-          <ChevronLeft className="w-5 h-5" />
-        )}
-      </button>
+      <Tooltip text={isOpen ? "Close panel" : "View personas"} position="left">
+        <button
+          onClick={onToggle}
+          className={`fixed top-20 bg-white hover:bg-gray-50 text-gray-700 p-2 rounded-lg shadow-md border border-gray-200 transition-all duration-300 z-30 ${
+            isOpen ? 'right-[19rem]' : 'right-4'
+          }`}
+        >
+          {isOpen ? (
+            <ChevronRight className="w-5 h-5" />
+          ) : (
+            <ChevronLeft className="w-5 h-5" />
+          )}
+        </button>
+      </Tooltip>
 
       <PersonaDetailsModal 
         isOpen={modalOpen}
@@ -226,9 +267,9 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
         isOpen={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
         onConfirm={confirmDelete}
-        title="Supprimer les personas"
-        message={`Voulez-vous vraiment supprimer ${selectedIndices.size} persona${selectedIndices.size > 1 ? 's' : ''} ?`}
-        confirmText="Supprimer"
+        title="Delete personas"
+        message={`Do you really want to delete ${selectedIndices.size} persona${selectedIndices.size !== 1 ? 's' : ''}?`}
+        confirmText="Delete"
         type="danger"
       />
     </>

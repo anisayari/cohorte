@@ -3,10 +3,28 @@
 import React from 'react';
 import { X, User, MapPin, Briefcase, Calendar, Heart, Brain, Quote } from 'lucide-react';
 
+interface Persona {
+  first_name: string;
+  last_name: string;
+  mini_description?: string;
+  age?: number;
+  gender?: string;
+  city: string;
+  country?: string;
+  profession: string;
+  income_level?: string;
+  education_level?: string;
+  marital_status?: string;
+  children?: number;
+  values?: string[];
+  lifestyle?: string;
+  bio?: string;
+}
+
 interface PersonaDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  persona: any | null;
+  persona: Persona | null;
 }
 
 export default function PersonaDetailsModal({ isOpen, onClose, persona }: PersonaDetailsModalProps) {
@@ -34,15 +52,15 @@ export default function PersonaDetailsModal({ isOpen, onClose, persona }: Person
           <div className="flex items-start gap-3">
             <User className="w-5 h-5 text-gray-400 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-gray-700">Âge & Genre</p>
-              <p className="text-gray-900">{persona.age} ans • {persona.gender === 'male' ? 'Homme' : 'Femme'}</p>
+              <p className="text-sm font-medium text-gray-700">Age & Gender</p>
+              <p className="text-gray-900">{persona.age} y • {persona.gender}</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3">
             <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-gray-700">Localisation</p>
+              <p className="text-sm font-medium text-gray-700">Location</p>
               <p className="text-gray-900">{persona.city}, {persona.country}</p>
             </div>
           </div>
@@ -52,14 +70,14 @@ export default function PersonaDetailsModal({ isOpen, onClose, persona }: Person
             <div>
               <p className="text-sm font-medium text-gray-700">Profession</p>
               <p className="text-gray-900">{persona.profession}</p>
-              <p className="text-gray-600 text-sm mt-1">Revenu: {persona.income_level}</p>
+              <p className="text-gray-600 text-sm mt-1">Income: {persona.income_level}</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3">
             <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-gray-700">Éducation</p>
+              <p className="text-sm font-medium text-gray-700">Education</p>
               <p className="text-gray-900">{persona.education_level}</p>
             </div>
           </div>
@@ -67,13 +85,10 @@ export default function PersonaDetailsModal({ isOpen, onClose, persona }: Person
           <div className="flex items-start gap-3">
             <Heart className="w-5 h-5 text-gray-400 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-gray-700">Statut familial</p>
+              <p className="text-sm font-medium text-gray-700">Family status</p>
               <p className="text-gray-900">
-                {persona.marital_status === 'married' ? 'Marié(e)' : 
-                 persona.marital_status === 'single' ? 'Célibataire' :
-                 persona.marital_status === 'divorced' ? 'Divorcé(e)' : 
-                 persona.marital_status}
-                {persona.children > 0 && ` • ${persona.children} enfant${persona.children > 1 ? 's' : ''}`}
+                {persona.marital_status}
+                {persona.children > 0 && ` • ${persona.children} child${persona.children > 1 ? 'ren' : ''}`}
               </p>
             </div>
           </div>
@@ -81,10 +96,10 @@ export default function PersonaDetailsModal({ isOpen, onClose, persona }: Person
           <div className="flex items-start gap-3">
             <Brain className="w-5 h-5 text-gray-400 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-gray-700">Valeurs</p>
+              <p className="text-sm font-medium text-gray-700">Values</p>
               <div className="flex flex-wrap gap-2 mt-1">
                 {persona.values?.map((value: string, i: number) => (
-                  <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                  <span key={i} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
                     {value}
                   </span>
                 ))}
@@ -96,14 +111,14 @@ export default function PersonaDetailsModal({ isOpen, onClose, persona }: Person
             <div className="flex items-start gap-3">
               <Quote className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-gray-700">Style de vie</p>
-                <p className="text-gray-900 italic">"{persona.lifestyle}"</p>
+                <p className="text-sm font-medium text-gray-700">Lifestyle</p>
+                <p className="text-gray-900 italic">&quot;{persona.lifestyle}&quot;</p>
               </div>
             </div>
           )}
 
           <div className="pt-4 border-t border-gray-200">
-            <p className="text-sm font-medium text-gray-700 mb-2">Résumé complet</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">Full summary</p>
             <p className="text-gray-600 text-sm leading-relaxed">{persona.bio}</p>
           </div>
         </div>

@@ -1,30 +1,44 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import EditorToolbar from '@/components/EditorToolbar';
 import EditorDocument from '@/components/EditorDocument';
 import PersonaModal from '@/components/PersonaModal';
 import ConversationSidebar from '@/components/ConversationSidebar';
 import PersonaSidebar from '@/components/PersonaSidebar';
 import FloatingActions from '@/components/FloatingActions';
+import CommentSystem from '@/components/CommentSystem';
+import SelectionPopup from '@/components/SelectionPopup';
+import PersonaCommentModal from '@/components/PersonaCommentModal';
 import { ConversationStorage, Conversation, Message } from '@/lib/conversation-storage';
+import { CommentStorage } from '@/lib/comment-storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 export default function EditorPage() {
   const [content, setContent] = useState<string>('');
-  const [personas, setPersonas] = useState<any[]>([]);
-  const [generating, setGenerating] = useState(false);
+  interface Persona {
+    id?: string;
+    first_name: string;
+    last_name: string;
+    age: number;
+    city: string;
+    profession: string;
+    values?: string[];
+    mini_description?: string;
+  }
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [hasHighlights, setHasHighlights] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [genRunning, setGenRunning] = useState(false);
   const [genProgress, setGenProgress] = useState(0);
-  const [genList, setGenList] = useState<any[]>([]);
+  const [genList, setGenList] = useState<Persona[]>([]);
   const totalToGenerate = 5;
-  const [savedPops, setSavedPops] = useState<{ id: string; seed: string; createdAt: number; personas: any[] }[]>([]);
+  const [savedPops, setSavedPops] = useState<{ id: string; seed: string; createdAt: number; personas: Persona[] }[]>([]);
   const [selectedPopId, setSelectedPopId] = useState<string>('');
-  const [selectedText, setSelectedText] = useState<string>('');
+  const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const [commentModalText, setCommentModalText] = useState<string>('');
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
@@ -48,6 +62,17 @@ export default function EditorPage() {
       createNewConversation();
     }
   }, []);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (modalOpen) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [modalOpen]);
 
   useEffect(() => {
     const handleSelectionChange = () => {
@@ -185,43 +210,13 @@ export default function EditorPage() {
       
       pdf.save(filename);
     } catch (error) {
-      console.error('Erreur lors de la génération du PDF:', error);
-      alert('Erreur lors de la génération du PDF');
+      console.error('Error while generating PDF:', error);
+      alert('Error while generating PDF');
     }
   };
 
   // No-op: plain text is read directly from contentEditable when needed
 
-  const handleGeneratePopulation = async (seed?: string) => {
-    try {
-      setGenerating(true);
-      const res = await fetch('/api/personas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 5, seed: seed ?? '' })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Erreur API');
-      const personas = data.personas || [];
-      setPersonas(personas);
-      // persist population locally
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const pop = { id: crypto.randomUUID(), seed: seed || '', createdAt: Date.now(), personas };
-        const key = 'cohorte_populations_v1';
-        const existing = JSON.parse(localStorage.getItem(key) || '[]');
-        existing.unshift(pop);
-        const trimmed = existing.slice(0, 20);
-        localStorage.setItem(key, JSON.stringify(trimmed));
-        setSavedPops(trimmed);
-        setSelectedPopId(pop.id);
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Échec de génération des personas');
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   function aggregateCategory(scores: number[], tones: string[]): 'good' | 'neutral' | 'bad' {
     const avg = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
@@ -237,7 +232,7 @@ export default function EditorPage() {
       setAnalyzing(true);
       const text = (editorRef.current?.innerText || '').trim();
       if (!text) {
-        alert('Veuillez saisir du texte à analyser.');
+        alert('Please enter text to analyze.');
         return;
       }
       const res = await fetch('/api/analyze', {
@@ -246,7 +241,7 @@ export default function EditorPage() {
         body: JSON.stringify({ text, personas })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Erreur API');
+      if (!res.ok) throw new Error(data?.error || 'API error');
 
       const chunks: { index: number; start: number; end: number; text: string }[] = data.chunks || [];
       const analyses: any[] = data.analyses || [];
@@ -265,9 +260,17 @@ export default function EditorPage() {
             .replace(/>/g, '&gt;')
             .replace(/\n/g, '<br/>');
         }
-        const perPersona = analyses.map(a => a.judgments?.find((j: any) => j.chunk_index === c.index)).filter(Boolean);
-        const scores = perPersona.map((j: any) => Number(j.sentiment_score) || 0);
-        const tones = perPersona.map((j: any) => String(j.tone || 'neutral'));
+        interface Judgment {
+          chunk_index: number;
+          sentiment_score: number;
+          tone?: string;
+        }
+        interface Analysis {
+          judgments?: Judgment[];
+        }
+        const perPersona = analyses.map((a: Analysis) => a.judgments?.find((j) => j.chunk_index === c.index)).filter(Boolean);
+        const scores = perPersona.map((j) => Number((j as Judgment).sentiment_score) || 0);
+        const tones = perPersona.map((j) => String((j as Judgment).tone || 'neutral'));
         const cat = aggregateCategory(scores, tones);
         const safe = c.text
           .replace(/&/g, '&amp;')
@@ -290,7 +293,7 @@ export default function EditorPage() {
       setHasHighlights(true);
     } catch (e) {
       console.error(e);
-      alert('Échec de l\'analyse');
+      alert('Analysis failed');
     } finally {
       setAnalyzing(false);
     }
@@ -320,7 +323,7 @@ export default function EditorPage() {
     setGenList([]);
     setGenProgress(0);
     try {
-      const built: any[] = [];
+      const built: Persona[] = [];
       for (let i = 0; i < totalToGenerate; i++) {
         const res = await fetch('/api/personas', {
           method: 'POST',
@@ -328,7 +331,7 @@ export default function EditorPage() {
           body: JSON.stringify({ count: 1, seed: seed ?? '' })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Erreur API');
+        if (!res.ok) throw new Error(data?.error || 'API error');
         const persona = (data.personas && data.personas[0]) || null;
         if (persona) {
           built.push(persona);
@@ -348,7 +351,7 @@ export default function EditorPage() {
       setSelectedPopId(pop.id);
     } catch (e) {
       console.error(e);
-      alert('Échec de génération des personas');
+      alert('Failed to generate personas');
     } finally {
       setGenRunning(false);
     }
@@ -404,7 +407,229 @@ export default function EditorPage() {
     }
   };
 
-  const saveCurrentState = () => {
+  const handleAnalyzeSelection = async (text: string) => {
+    if (!personas || personas.length === 0) {
+      alert('Please generate personas first');
+      return;
+    }
+
+    try {
+      // Create a comment thread for the selected text
+      const selection = window.getSelection();
+      if (!selection || !selection.toString().trim()) return;
+      
+      const range = selection.getRangeAt(0);
+      const startOffset = getTextOffset(editorRef.current!, range.startContainer, range.startOffset);
+      const endOffset = startOffset + text.length;
+      
+      // Create thread
+      const colors = ['#FFE082', '#FFCCBC', '#C5E1A5', '#B3E5FC', '#F8BBD0'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      const thread = CommentStorage.createThread(
+        currentConversation?.id || 'default',
+        startOffset,
+        endOffset,
+        text,
+        randomColor
+      );
+      CommentStorage.saveThread(thread);
+      
+      // Analyze with personas
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          text: text, 
+          personas: personas.slice(0, 3)
+        })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'API error');
+
+      // Add persona comments
+      const analyses = data.analyses || [];
+      interface AnalysisResult {
+        judgments?: {
+          reasoning?: string;
+          rationale?: string;
+          sentiment_score: number;
+          tone?: string;
+        }[];
+      }
+      analyses.forEach((analysis: AnalysisResult, index: number) => {
+        if (analysis.judgments && analysis.judgments.length > 0) {
+          const judgment = analysis.judgments[0];
+          const persona = personas[index];
+          
+          CommentStorage.addComment(thread.id, {
+            text: `${judgment.reasoning || judgment.rationale} (Sentiment: ${judgment.sentiment_score}/100)`,
+            author: `${persona.first_name} ${persona.last_name}`,
+            authorType: 'ai',
+            personaId: persona.id
+          });
+        }
+      });
+      
+      // Clear selection
+      selection.removeAllRanges();
+    } catch (e) {
+      console.error('Error during analysis:', e);
+      alert('Error during analysis');
+    }
+  };
+
+  const getTextOffset = (root: Node, node: Node, offset: number): number => {
+    let textOffset = 0;
+    let currentNode: Node | null = root;
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+
+    while (currentNode = walker.nextNode()) {
+      if (currentNode === node) {
+        return textOffset + offset;
+      }
+      textOffset += (currentNode as Text).length;
+    }
+
+    return textOffset;
+  };
+
+  const handleRephraseSelection = async () => {
+    // TODO: Implement rephrase functionality
+    alert('Rephrase functionality coming soon!');
+  };
+
+  const handleCommentSelection = (text: string) => {
+    // Open modal to select personas for commenting
+    setCommentModalText(text);
+    setCommentModalOpen(true);
+  };
+
+  const handlePersonaComment = async (selectedPersonaIndices: number[]) => {
+    const selection = window.getSelection();
+    if (!selection || !selection.toString().trim()) return;
+    
+    const range = selection.getRangeAt(0);
+    const startOffset = getTextOffset(editorRef.current!, range.startContainer, range.startOffset);
+    const endOffset = startOffset + commentModalText.length;
+    
+    // Create comment thread
+    const colors = ['#FFE082', '#FFCCBC', '#C5E1A5', '#B3E5FC', '#F8BBD0'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    const thread = CommentStorage.createThread(
+      currentConversation?.id || 'default',
+      startOffset,
+      endOffset,
+      commentModalText,
+      randomColor
+    );
+    CommentStorage.saveThread(thread);
+    
+    // Analyze with selected personas
+    if (selectedPersonaIndices.length > 0) {
+      const selectedPersonas = selectedPersonaIndices.map(i => personas[i]);
+      try {
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            text: commentModalText, 
+            personas: selectedPersonas
+          })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'API error');
+
+        // Add persona comments
+        const analyses = data.analyses || [];
+        interface AnalysisResult {
+        judgments?: {
+          reasoning?: string;
+          rationale?: string;
+          sentiment_score: number;
+          tone?: string;
+        }[];
+      }
+      analyses.forEach((analysis: AnalysisResult, index: number) => {
+          if (analysis.judgments && analysis.judgments.length > 0) {
+            const judgment = analysis.judgments[0];
+            const persona = selectedPersonas[index];
+            
+            CommentStorage.addComment(thread.id, {
+              text: `${judgment.reasoning || judgment.rationale} (Sentiment: ${judgment.sentiment_score}/100)`,
+              author: `${persona.first_name} ${persona.last_name}`,
+              authorType: 'ai',
+              personaId: persona.id
+            });
+          }
+        });
+      } catch (e) {
+        console.error('Error during persona analysis:', e);
+      }
+    }
+    
+    // Clear selection
+    window.getSelection()?.removeAllRanges();
+    setCommentModalOpen(false);
+    setCommentModalText('');
+    
+    // Trigger refresh
+    window.dispatchEvent(new CustomEvent('threadsUpdated'));
+  };
+
+  const handleAnalyzeSelectionForComment = async (text: string, threadId: string) => {
+    if (!personas || personas.length === 0) {
+      alert('Please generate personas first');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          text: text, 
+          personas: personas.slice(0, 3) // Analyze with the first 3 personas
+        })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'API error');
+
+      // Add persona comments
+      const analyses = data.analyses || [];
+      interface AnalysisResult {
+        judgments?: {
+          reasoning?: string;
+          rationale?: string;
+          sentiment_score: number;
+          tone?: string;
+        }[];
+      }
+      analyses.forEach((analysis: AnalysisResult, index: number) => {
+        if (analysis.judgments && analysis.judgments.length > 0) {
+          const judgment = analysis.judgments[0];
+          const persona = personas[index];
+          
+          CommentStorage.addComment(threadId, {
+            text: `${judgment.reasoning} (Sentiment: ${judgment.sentiment_score}/100, Tone: ${judgment.tone})`,
+            author: `${persona.first_name} ${persona.last_name}`,
+            authorType: 'ai',
+            personaId: persona.id
+          });
+        }
+      });
+    } catch (e) {
+      console.error('Error during analysis:', e);
+    }
+  };
+
+  const saveCurrentState = useCallback(() => {
     if (!currentConversation) return;
     
     const state = {
@@ -422,13 +647,13 @@ export default function EditorPage() {
     ConversationStorage.addMessage(currentConversation.id, message);
     
     // Update title if it's still the default
-    if (currentConversation.title === 'Nouveau script' && editorRef.current?.innerText) {
+    if (currentConversation.title === 'New script' && editorRef.current?.innerText) {
       const firstLine = editorRef.current.innerText.split('\n')[0].slice(0, 50);
       if (firstLine) {
         ConversationStorage.updateConversationTitle(currentConversation.id, firstLine);
       }
     }
-  };
+  }, [currentConversation, content, personas, hasHighlights, editorRef]);
 
   // Auto-save when content changes
   useEffect(() => {
@@ -437,7 +662,7 @@ export default function EditorPage() {
       saveCurrentState();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [content, personas, hasHighlights, currentConversation]);
+  }, [content, personas, hasHighlights, currentConversation, saveCurrentState]);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -455,6 +680,9 @@ export default function EditorPage() {
         personas={personas}
         isOpen={personaSidebarOpen}
         onToggle={() => setPersonaSidebarOpen(!personaSidebarOpen)}
+        savedPops={savedPops}
+        selectedPopId={selectedPopId}
+        onLoadPopulation={loadPopulation}
         onDeletePersonas={(indices) => {
           const newPersonas = personas.filter((_, i) => !indices.includes(i));
           setPersonas(newPersonas);
@@ -462,9 +690,16 @@ export default function EditorPage() {
           if (selectedPopId && typeof window !== 'undefined') {
             const key = 'cohorte_populations_v1';
             const pops = JSON.parse(localStorage.getItem(key) || '[]');
-            const popIndex = pops.findIndex((p: any) => p.id === selectedPopId);
+            const popIndex = pops.findIndex((p: {id: string}) => p.id === selectedPopId);
             if (popIndex !== -1) {
-              pops[popIndex].personas = newPersonas;
+              if (newPersonas.length === 0) {
+                // Delete the entire population if all personas are deleted
+                pops.splice(popIndex, 1);
+                setSelectedPopId('');
+              } else {
+                // Otherwise just update the personas
+                pops[popIndex].personas = newPersonas;
+              }
               localStorage.setItem(key, JSON.stringify(pops));
               setSavedPops(pops);
             }
@@ -489,34 +724,22 @@ export default function EditorPage() {
         content={content}
         onContentChange={setContent}
       />
-      {/* Legend + saved populations */}
-      <div className="max-w-4xl mx-auto px-4 pb-8 text-gray-800">
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="text-xs px-2 py-1 rounded bg-green-50 text-green-800 border border-green-200">Très bien</span>
-          <span className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200">Mitigé</span>
-          <span className="text-xs px-2 py-1 rounded bg-red-50 text-red-800 border border-red-200">Pas bien</span>
-        </div>
-        <div className="mb-4 flex items-center gap-2">
-          <label className="text-sm text-gray-600">Populations enregistrées:</label>
-          <select
-            className="text-sm border rounded px-2 py-1 bg-white"
-            value={selectedPopId}
-            onChange={(e) => loadPopulation(e.target.value)}
-          >
-            <option value="">—</option>
-            {savedPops.map(p => (
-              <option key={p.id} value={p.id}>
-                {new Date(p.createdAt).toLocaleString()} — {p.seed ? p.seed.slice(0, 40) : 'sans description'}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <SelectionPopup
+        onAnalyze={handleAnalyzeSelection}
+        onRephrase={handleRephraseSelection}
+        onComment={handleCommentSelection}
+      />
+      <CommentSystem
+        documentId={currentConversation?.id || 'default'}
+        editorRef={editorRef}
+        personas={personas}
+        onAnalyzeSelection={handleAnalyzeSelectionForComment}
+      />
       <FloatingActions
         onGeneratePopulation={openGenerateModal}
         onAnalyze={handleAnalyze}
         onClearHighlights={handleClearHighlights}
-        generating={generating}
+        generating={genRunning}
         analyzing={analyzing}
         canClear={hasHighlights}
       />
@@ -528,6 +751,16 @@ export default function EditorPage() {
         progress={genProgress}
         total={totalToGenerate}
         generated={genList}
+      />
+      <PersonaCommentModal
+        isOpen={commentModalOpen}
+        onClose={() => {
+          setCommentModalOpen(false);
+          setCommentModalText('');
+        }}
+        personas={personas}
+        selectedText={commentModalText}
+        onConfirm={handlePersonaComment}
       />
       </div>
     </div>

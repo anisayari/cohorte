@@ -24,32 +24,32 @@ type CreateBody = {
   seed?: string; // free-text description to guide population generation
   hints?: {
     locale?: string;
-    theme?: string; // e.g., "cinéma", "tech", "voyage"
+    theme?: string; // e.g., "movies", "tech", "travel"
     constraints?: string[];
   };
 };
 
 const SYSTEM_INSTRUCTIONS = `
-Tu es un générateur de personas marketing. Retourne UNIQUEMENT un JSON valide.
-Contraintes strictes:
-- Utilise des prénoms/nom réalistes et variés français.
-- Ville: une vraie ville française.
-- age: entre 18 et 75 ans.
-- gender: 'male' ou 'female' uniquement.
-- profession: métier réaliste.
-- income_level: "Faible", "Moyen", "Élevé" ou "Très élevé".
-- education_level: "Sans diplôme", "Bac", "Bac+2", "Bac+3/4", "Bac+5 ou plus".
+You are a marketing persona generator. Return ONLY valid JSON.
+Strict constraints:
+- Use realistic, diverse first/last names.
+- city and country must be real locations.
+- age: between 18 and 75.
+- gender: 'male' or 'female' only.
+- profession: realistic job.
+- income_level: "Low", "Medium", "High", or "Very high".
+- education_level: "No diploma", "High school", "Associate", "Bachelor", "Master+".
 - marital_status: "single", "married", "divorced", "widowed".
-- children: nombre d'enfants (0-5).
-- values: 2-3 valeurs importantes pour la personne.
-- lifestyle: une phrase sur son style de vie.
-- mini_description: ≤ 160 caractères (style courte tagline).
-- bio: 2–5 phrases naturelles de biographie.
-- Pas d'informations sensibles, pas d'identifiants réels.
+- children: number of children (0-5).
+- values: 2-3 important personal values.
+- lifestyle: one sentence about lifestyle.
+- mini_description: ≤ 160 characters (short tagline style).
+- bio: 2–5 natural biography sentences.
+- No sensitive info, no real identifiers.
 `;
 
 const PERSONA_SCHEMA_PROMPT = `
-Schéma JSON attendu:
+Expected JSON schema:
 {
   "mini_description": string,
   "first_name": string,
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const openai = getOpenAI();
     const model = getModel();
 
-    const hintText = `Contexte:\n- Locale: ${hints?.locale ?? "fr"}\n- Thème: ${hints?.theme ?? "général"}\n- Contraintes: ${(hints?.constraints ?? []).join(", ") || "aucune"}\n- Description libre: ${body.seed ? body.seed : ""}`;
+    const hintText = `Context:\n- Locale: ${hints?.locale ?? "en"}\n- Theme: ${hints?.theme ?? "general"}\n- Constraints: ${(hints?.constraints ?? []).join(", ") || "none"}\n- Freeform description: ${body.seed ? body.seed : ""}`;
 
     const tasks = Array.from({ length: count }, async () => {
       const completion = await openai.responses.create({
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           { role: "system", content: SYSTEM_INSTRUCTIONS },
           {
             role: "user",
-            content: `${PERSONA_SCHEMA_PROMPT}\n\n${hintText}\n\nProduit un seul persona en JSON strict.`,
+            content: `${PERSONA_SCHEMA_PROMPT}\n\n${hintText}\n\nProduce a single persona in strict JSON.`,
           },
         ],
         text: {
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
               type: "object",
               additionalProperties: false,
               properties: {
-                mini_description: { type: "string", description: "Tagline courte (≤160c)" },
+                mini_description: { type: "string", description: "Short tagline (≤160c)" },
                 first_name: { type: "string" },
                 last_name: { type: "string" },
                 age: { type: "number", minimum: 18, maximum: 75 },
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       try {
         parsed = JSON.parse(raw);
       } catch {
-        // Très rare si le modèle dévie; renvoie un fallback vide structuré
+        // Rare. Return a structured empty fallback
         parsed = {
           mini_description: "",
           first_name: "",
@@ -150,10 +150,10 @@ export async function POST(req: NextRequest) {
           age: 30,
           gender: "male",
           city: "",
-          country: "France",
+          country: "USA",
           profession: "",
-          income_level: "Moyen",
-          education_level: "Bac+3/4",
+          income_level: "Medium",
+          education_level: "Bachelor",
           marital_status: "single",
           children: 0,
           values: [],
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
       // Normalisation douce
       parsed.age = Number(parsed.age) || 30;
       parsed.children = Number(parsed.children) || 0;
-      if (!parsed.country) parsed.country = "France";
+      if (!parsed.country) parsed.country = "USA";
       return parsed;
     });
 

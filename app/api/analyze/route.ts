@@ -32,15 +32,15 @@ type PersonaAnalysis = {
 };
 
 const SYSTEM_ANALYST = `
-Tu es un juge simulant la réaction d'une vraie personne décrite (le persona).
-Respecte STRICTEMENT le format JSON demandé, sans texte additionnel.
-Donne des évaluations brèves mais utiles. Sois cohérent et juste.
+You simulate the reaction of a real person described (the persona).
+STRICTLY adhere to the requested JSON format, no extra text.
+Provide brief but useful evaluations. Be consistent and fair.
 `;
 
 const OUTPUT_SCHEMA_PROMPT = `
-Réponds UNIQUEMENT avec un JSON suivant ce schéma:
+Respond ONLY with a JSON following this schema:
 {
-  "persona_name": string, // "Prénom Nom" ou alias
+  "persona_name": string,
   "judgments": [
     {
       "chunk_index": number,
@@ -49,7 +49,7 @@ Réponds UNIQUEMENT avec un JSON suivant ce schéma:
       "sentiment_score": number, // 0-100
       "engagement_score": number, // 0-100
       "confidence": number, // 0-1
-      "rationale": string // 1-2 phrases max
+      "rationale": string // max 1-2 sentences
     }
   ]
 }
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     let personas = Array.isArray(body.personas) ? body.personas.slice(0, 10) : [];
 
     if (!text.trim()) {
-      return NextResponse.json({ error: "text requis" }, { status: 400 });
+      return NextResponse.json({ error: "text is required" }, { status: 400 });
     }
 
     // Chunk locally for stable highlighting on the client.
@@ -79,13 +79,13 @@ export async function POST(req: NextRequest) {
     if (personas.length === 0) {
       personas = [
         {
-          mini_description: "Lecteur neutre et curieux",
+          mini_description: "Neutral and curious reader",
           first_name: "Alex",
           last_name: "Martin",
           city: "Paris",
           salary_eur: 45000,
           biography:
-            "Alex aime apprendre et donner des retours honnêtes, en se concentrant sur la clarté et l'impact.",
+            "Alex enjoys learning and giving honest feedback, focusing on clarity and impact.",
         },
       ];
     }
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     const tasks = personas.map(async (p) => {
       const personaName = `${p.first_name} ${p.last_name}`.trim();
-      const personaCard = `PERSONA:\nNom: ${personaName}\nVille: ${p.city}\nSalaire (EUR): ${p.salary_eur}\nMini-description: ${p.mini_description}\nBio: ${p.biography}`;
+      const personaCard = `PERSONA:\nName: ${personaName}\nCity: ${p.city}\nSalary (EUR): ${p.salary_eur}\nMini-description: ${p.mini_description}\nBio: ${p.biography}`;
 
       // Build a compact representation of chunks to evaluate.
       const items = chunks.map((c) => ({ index: c.index, text: c.text }));
@@ -107,13 +107,13 @@ export async function POST(req: NextRequest) {
           {
             role: "system",
             content:
-              `Parle comme le persona. Base ton jugement sur ses goûts et préférences implicites. Ne pas inventer de faits. Si incertain, utilise "uncertain".`,
+              `Speak as the persona. Base your judgment on their implicit tastes and preferences. Do not invent facts. If uncertain, use "uncertain".`,
           },
           { role: "user", content: personaCard },
           {
             role: "user",
             content:
-              `${OUTPUT_SCHEMA_PROMPT}\n\nVoici la liste des chunks à évaluer (par index):\n${JSON.stringify(items)}`,
+              `${OUTPUT_SCHEMA_PROMPT}\n\nHere is the list of chunks to evaluate (by index):\n${JSON.stringify(items)}`,
           },
         ],
         text: {

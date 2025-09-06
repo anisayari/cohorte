@@ -47,7 +47,7 @@ export class ConversationStorage {
   static createNewConversation(): Conversation {
     return {
       id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: 'Nouveau script',
+      title: 'New script',
       messages: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

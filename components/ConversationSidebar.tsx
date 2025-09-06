@@ -110,11 +110,11 @@ export default function ConversationSidebar({
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'À l\'instant';
+    if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins} min`;
     if (diffHours < 24) return `${diffHours}h`;
-    if (diffDays < 7) return `${diffDays}j`;
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    if (diffDays < 7) return `${diffDays}d`;
+    return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
   };
 
   return (
@@ -131,14 +131,14 @@ export default function ConversationSidebar({
               className="w-full flex items-center justify-center gap-2.5 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm shadow-sm mb-3"
             >
               <Plus className="w-4 h-4" />
-              <span>Nouveau Script</span>
+              <span>New Script</span>
             </button>
             {conversations.length > 0 && (
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500">
                   {selectMode && selectedIds.size > 0 
-                    ? `${selectedIds.size} sélectionné${selectedIds.size > 1 ? 's' : ''}`
-                    : `${conversations.length} conversation${conversations.length > 1 ? 's' : ''}`
+                    ? `${selectedIds.size} selected`
+                    : `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`
                   }
                 </p>
                 <div className="flex gap-2">
@@ -151,19 +151,19 @@ export default function ConversationSidebar({
                     }}
                     className={`text-xs px-2 py-1 rounded-lg transition-colors ${
                       selectMode 
-                        ? 'bg-blue-100 text-blue-700' 
+                        ? 'bg-gray-800 text-white' 
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    {selectMode ? 'Annuler' : 'Sélectionner'}
+                    {selectMode ? 'Cancel' : 'Select'}
                   </button>
                   {selectMode && (
                     <>
                       <button
                         onClick={selectedIds.size === conversations.length ? deselectAll : selectAll}
-                        className="text-xs text-blue-600 hover:text-blue-700"
+                        className="text-xs text-gray-600 hover:text-gray-800"
                       >
-                        {selectedIds.size === conversations.length ? 'Désélectionner' : 'Tout'}
+                        {selectedIds.size === conversations.length ? 'Deselect all' : 'Select all'}
                       </button>
                       {selectedIds.size > 0 && (
                         <button
@@ -171,7 +171,7 @@ export default function ConversationSidebar({
                           className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
                         >
                           <Trash2 className="w-3 h-3" />
-                          Supprimer
+                          Delete
                         </button>
                       )}
                     </>
@@ -185,7 +185,7 @@ export default function ConversationSidebar({
             {conversations.length === 0 ? (
               <div className="px-5 py-12 text-center">
                 <FileText className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-500 text-sm">Aucune conversation</p>
+                <p className="text-gray-500 text-sm">No conversations</p>
               </div>
             ) : (
               <div className="px-3">
@@ -201,7 +201,7 @@ export default function ConversationSidebar({
                     }}
                     className={`group relative mb-1 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 ${
                       selectedIds.has(conv.id)
-                        ? 'bg-blue-50 border border-blue-200'
+                        ? 'bg-gray-100 border border-gray-300'
                         : currentConversationId === conv.id
                         ? 'bg-gray-100'
                         : 'hover:bg-gray-50 border border-transparent'
@@ -242,7 +242,7 @@ export default function ConversationSidebar({
                             {selectMode ? (
                               <div className="p-1">
                                 {selectedIds.has(conv.id) ? (
-                                  <CheckSquare className="w-5 h-5 text-blue-600" />
+                                  <CheckSquare className="w-5 h-5 text-gray-800" />
                                 ) : (
                                   <Square className="w-5 h-5 text-gray-400" />
                                 )}
@@ -268,7 +268,7 @@ export default function ConversationSidebar({
                                   className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm text-gray-700"
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
-                                  Renommer
+                                  Rename
                                 </button>
                                 <button
                                   onClick={(e) => {
@@ -278,7 +278,7 @@ export default function ConversationSidebar({
                                   className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm text-red-600"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                  Supprimer
+                                  Delete
                                 </button>
                               </div>
                             )}
@@ -310,9 +310,9 @@ export default function ConversationSidebar({
         isOpen={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
         onConfirm={confirmDelete}
-        title="Supprimer les conversations"
-        message={`Voulez-vous vraiment supprimer ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''} ?`}
-        confirmText="Supprimer"
+        title="Delete conversations"
+        message={`Do you really want to delete ${selectedIds.size} conversation${selectedIds.size !== 1 ? 's' : ''}?`}
+        confirmText="Delete"
         type="danger"
       />
     </>
