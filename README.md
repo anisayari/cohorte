@@ -1,5 +1,34 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## IA Personas & Analyse (Nouveautés)
+
+Two new API routes and UI actions are available to generate personas and analyze text with persona-driven judgments and structured outputs.
+
+API routes:
+
+- `POST /api/personas` — Generate personas via OpenAI with structured JSON. Body: `{ count?: number, hints?: { locale?: string, theme?: string, constraints?: string[] } }`. Response: `{ personas: Persona[] }` where each persona includes `mini_description`, `first_name`, `last_name`, `city`, `salary_eur`, `biography`.
+- `POST /api/analyze` — Analyze text for one or more personas and return judgments per chunk. Body: `{ text: string, personas: Persona[] }`. Response: `{ chunks: {index,start,end,text}[], analyses: PersonaAnalysis[] }`.
+
+Configuration:
+
+- Set `OPENAI_API_KEY` in your environment (e.g., `.env.local`).
+- Optional: `OPENAI_MODEL` (default `gpt-5`).
+
+UI:
+
+- In the editor (`/editor`), the toolbar includes two buttons:
+  - "Générer des populations (5)": creates 5 personas and lists them below the editor.
+  - "Analyser": sends the editor’s text to `/api/analyze` with the generated personas and highlights chunks:
+    - Green: very good
+    - Red: not good
+    - Yellow: mixed/neutral
+
+Notes:
+
+- Highlighting aggregates sentiment and tone across personas.
+- Uses `chat.completions` with `response_format: json_object` to enforce structured JSON.
+- Run `npm install` to install the new `openai` dependency.
+
 ## Getting Started
 
 First, run the development server:
