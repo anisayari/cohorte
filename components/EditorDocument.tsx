@@ -11,6 +11,7 @@ interface EditorDocumentProps {
 const EditorDocument = forwardRef<HTMLDivElement, EditorDocumentProps>(
   ({ content, onContentChange }, ref) => {
     const [pages, setPages] = useState<number[]>([1]);
+    // Tooltips removed: comments shown in the right rail only
     
     const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
       const target = e.currentTarget;
@@ -47,6 +48,7 @@ const EditorDocument = forwardRef<HTMLDivElement, EditorDocumentProps>(
       }
     }, [content, ref]);
 
+
     const handleAddPage = () => {
       setPages([...pages, pages.length + 1]);
     };
@@ -80,24 +82,29 @@ const EditorDocument = forwardRef<HTMLDivElement, EditorDocumentProps>(
         <AddPageButton onAddPage={handleAddPage} />
         
         <style jsx>{`
-          .analysis-chunk {
+          :global(.analysis-chunk) {
             box-decoration-break: clone;
             -webkit-box-decoration-break: clone;
             padding: 0 2px;
             border-radius: 3px;
           }
-          .analysis-good {
-            background: #dcfce7; /* green-100 */
-            color: #064e3b; /* green-900 */
+          :global(.line-annotated) {
+            position: relative;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+            border-radius: 3px;
+            transition: background-color .12s ease, box-shadow .12s ease;
           }
-          .analysis-neutral {
-            background: #fef9c3; /* yellow-100 */
-            color: #713f12; /* amber-900 */
+          /* Highlight only when focused via the rail */
+          :global(.line-annotated.focused) {
+            background: #fff59d; /* Google Docs-like yellow */
+            box-shadow: inset 0 0 0 2px rgba(59,130,246,.6);
           }
-          .analysis-bad {
-            background: #fee2e2; /* red-200 */
-            color: #7f1d1d; /* red-900 */
+          :global(.comment-highlight.focused), :global(.line-annotated.focused) {
+            box-shadow: inset 0 0 0 2px #3b82f6;
+            transition: box-shadow .2s ease;
           }
+          /* tooltip styles removed (rail-only comments) */
           [contenteditable]:empty:before {
             content: attr(data-placeholder);
             color: #999;

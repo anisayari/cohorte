@@ -1,19 +1,17 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BarChart3, Edit3, MessageSquare } from 'lucide-react';
+import { BarChart3, Edit3 } from 'lucide-react';
 import Tooltip from './Tooltip';
 
 interface SelectionPopupProps {
   onAnalyze: (text: string) => void;
   onRephrase: (text: string) => void;
-  onComment: (text: string) => void;
 }
 
 export default function SelectionPopup({
   onAnalyze,
   onRephrase,
-  onComment
 }: SelectionPopupProps) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -59,7 +57,7 @@ export default function SelectionPopup({
     };
   }, []);
 
-  const handleAction = (action: 'analyze' | 'rephrase' | 'comment') => {
+  const handleAction = (action: 'analyze' | 'rephrase') => {
     if (!selectedText) return;
     
     switch(action) {
@@ -68,9 +66,6 @@ export default function SelectionPopup({
         break;
       case 'rephrase':
         onRephrase(selectedText);
-        break;
-      case 'comment':
-        onComment(selectedText);
         break;
     }
     
@@ -111,16 +106,7 @@ export default function SelectionPopup({
           </button>
         </Tooltip>
         
-        <div className="w-px h-5 bg-gray-200" />
-        
-        <Tooltip text="Add comment" position="bottom">
-          <button
-            onClick={() => handleAction('comment')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors group"
-          >
-            <MessageSquare className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-          </button>
-        </Tooltip>
+        {/* No manual comments — AI-only */}
       </div>
       
       <style jsx>{`

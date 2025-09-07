@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Users, User, ChevronRight, ChevronLeft, Trash2, Square, CheckSquare } from 'lucide-react';
+import { Users, User, ChevronRight, ChevronLeft, Trash2, Square, CheckSquare, ThumbsUp, ThumbsDown } from 'lucide-react';
 import PersonaDetailsModal from './PersonaDetailsModal';
 import ConfirmModal from './ConfirmModal';
 import Tooltip from './Tooltip';
@@ -24,14 +24,16 @@ interface PersonaSidebarProps {
   savedPops?: { id: string; seed: string; createdAt: number; personas: Persona[] }[];
   selectedPopId?: string;
   onLoadPopulation?: (id: string) => void;
+  insights?: { persona_name: string; overall?: { comment?: string; liked?: boolean } }[];
 }
 
-export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePersonas, savedPops = [], selectedPopId = '', onLoadPopulation }: PersonaSidebarProps) {
+export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePersonas, savedPops = [], selectedPopId = '', onLoadPopulation, insights = [] }: PersonaSidebarProps) {
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'personas' | 'insights'>('personas');
 
   const handlePersonaClick = (persona: Persona, index: number) => {
     if (selectMode) {
@@ -88,8 +90,23 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
       >
         <div className="flex flex-col h-full">
           <div className="p-5 border-b border-gray-100">
-            {/* Saved populations selector at the top */}
-            {savedPops && savedPops.length > 0 && (
+            {/* Tabs */}
+            <div className="flex items-center gap-2 mb-4">
+              <button
+                onClick={() => { setActiveTab('personas'); setSelectMode(false); setSelectedIndices(new Set()); }}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === 'personas' ? 'bg-gray-900 text-white border-gray-900' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200'}`}
+              >
+                Personas ({personas.length})
+              </button>
+              <button
+                onClick={() => { setActiveTab('insights'); setSelectMode(false); setSelectedIndices(new Set()); }}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === 'insights' ? 'bg-gray-900 text-white border-gray-900' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-200'}`}
+              >
+                Insights ({insights.length})
+              </button>
+            </div>
+            {/* Saved populations (personas tab only) */}
+            {activeTab === 'personas' && savedPops && savedPops.length > 0 && (
               <div className="mb-4">
                 <label className="block text-xs text-gray-600 mb-2 font-medium">Saved populations</label>
                 <select
@@ -106,13 +123,12 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
                 </select>
               </div>
             )}
-            
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-gray-700" />
-                <h3 className="font-semibold text-gray-900">Generated personas</h3>
+                <h3 className="font-semibold text-gray-900">{activeTab === 'personas' ? 'Generated personas' : 'Insights'}</h3>
               </div>
-              {personas.length > 0 && onDeletePersonas && (
+              {activeTab === 'personas' && personas.length > 0 && onDeletePersonas && (
                 <Tooltip text={selectMode ? "Cancel selection" : "Select to delete"} position="bottom">
                   <button
                     onClick={() => {
@@ -132,7 +148,7 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
                 </Tooltip>
               )}
             </div>
-            {personas.length > 0 && (
+            {activeTab === 'personas' && personas.length > 0 && (
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500">
                   {selectMode && selectedIndices.size > 0 
@@ -168,7 +184,27 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
           </div>
 
           <div className="flex-1 overflow-y-auto py-2">
-            {personas.length === 0 ? (
+            {activeTab === 'insights' ? (
+              <div className="px-4 space-y-3">
+                {insights.length === 0 ? (
+                  <div className="text-sm text-gray-500 px-1">No insights yet — run Analyze.</div>
+                ) : insights.map((ins, i) => {
+                  const liked = !!ins.overall?.liked;
+                  const comment = String(ins.overall?.comment || '');
+                  return (
+                    <div key={i} className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-900 truncate pr-2">{ins.persona_name}</div>
+                        <div className="shrink-0">
+                          {liked ? <ThumbsUp className="w-4 h-4 text-green-600" /> : <ThumbsDown className="w-4 h-4 text-red-600" />}
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-900">“{comment}”</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : personas.length === 0 ? (
               <div className="px-5 py-12 text-center">
                 <User className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                 <p className="text-gray-500 text-sm">No personas yet</p>

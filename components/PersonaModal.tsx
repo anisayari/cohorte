@@ -48,17 +48,17 @@ export default function PersonaModal({ open, onClose, onConfirm, generating, pro
             disabled={!!generating}
           />
 
-          {generating && (
+          {generating ? (
             <div>
               <div className="flex items-center justify-between mb-1 text-sm text-gray-600">
-                <span>Generating</span>
+                <span>Generating…</span>
                 <span>{generated.length}/{total}</span>
               </div>
-              <div className="h-2 w-full bg-gray-200 rounded">
-                <div className="h-2 bg-blue-600 rounded" style={{ width: `${pct}%` }} />
+              <div className="h-2 w-full bg-gray-200 rounded overflow-hidden">
+                <div className="h-2 bg-blue-600 rounded transition-all" style={{ width: `${pct}%` }} />
               </div>
               {generated.length > 0 && (
-                <div className="mt-3 border rounded p-2 bg-gray-50 max-h-44 overflow-y-auto text-sm">
+                <div className="mt-3 border rounded p-2 bg-gray-50 max-h-44 overflow-y-auto text-sm animate-pulse">
                   {generated.map((p, i) => (
                     <div key={i} className="py-1">
                       <span className="font-medium">{p.first_name} {p.last_name}</span>
@@ -69,6 +69,24 @@ export default function PersonaModal({ open, onClose, onConfirm, generating, pro
                 </div>
               )}
             </div>
+          ) : (
+            generated.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2 text-sm text-gray-600">
+                  <span>Generated personas</span>
+                  <span>{generated.length}</span>
+                </div>
+                <div className="border rounded p-2 bg-gray-50 max-h-48 overflow-y-auto text-sm">
+                  {generated.map((p, i) => (
+                    <div key={i} className="py-1">
+                      <span className="font-medium">{p.first_name} {p.last_name}</span>
+                      <span className="opacity-70"> • {p.city}</span>
+                      <span className="opacity-70"> — {p.mini_description}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           )}
         </div>
         <div className="px-5 py-4 border-t border-gray-200 flex gap-2 justify-end">

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getModel, getOpenAI } from "@/lib/openai";
-import { chunkText, TextChunk } from "@/lib/chunkText";
+import { z } from "zod";
+import { zodTextFormat } from "openai/helpers/zod";
 
 type Persona = {
-  mini_description: string;
+  mini_description?: string;
   first_name: string;
   last_name: string;
-  city: string;
-  salary_eur: number;
-  biography: string;
+  city?: string;
+  salary_eur?: number;
+  biography?: string;
 };
 
 type AnalyzeBody = {
@@ -16,43 +17,46 @@ type AnalyzeBody = {
   personas: Persona[];
 };
 
-type ChunkJudgment = {
-  chunk_index: number;
-  verdict: "true" | "false" | "uncertain";
-  tone: "exciting" | "neutral" | "boring";
-  sentiment_score: number; // 0-100 (higher = better liked)
-  engagement_score: number; // 0-100 (higher = more engaging)
-  confidence: number; // 0-1
-  rationale: string;
+type IndexedLine = {
+  line: number; // 1-based
+  start: number; // offset in plain text
+  end: number;   // exclusive
+  text: string;
+};
+
+type PersonaLineAnnotation = {
+  line: number; // 1-based, clamped server-side
+  comment: string; // short, comment-style
+  category: "praise" | "suggestion" | "issue" | "question";
+  severity: "low" | "medium" | "high";
+  reaction?: "like" | "dislike"; // optional quick reaction for this line
 };
 
 type PersonaAnalysis = {
   persona_name: string;
-  judgments: ChunkJudgment[];
+  overall: {
+    comment: string; // short YouTube-style comment on the video
+    liked: boolean;  // viewer would thumbs-up the video
+  };
+  annotations: PersonaLineAnnotation[];
 };
 
 const SYSTEM_ANALYST = `
-You simulate the reaction of a real person described (the persona).
-STRICTLY adhere to the requested JSON format, no extra text.
-Provide brief but useful evaluations. Be consistent and fair.
-`;
+You are simulating YouTube viewer comments from the given persona about a video.
+Context: the USER will provide the script text for a YouTube video (spoken content). React like a real viewer leaving comments.
 
-const OUTPUT_SCHEMA_PROMPT = `
-Respond ONLY with a JSON following this schema:
-{
-  "persona_name": string,
-  "judgments": [
-    {
-      "chunk_index": number,
-      "verdict": "true" | "false" | "uncertain",
-      "tone": "exciting" | "neutral" | "boring",
-      "sentiment_score": number, // 0-100
-      "engagement_score": number, // 0-100
-      "confidence": number, // 0-1
-      "rationale": string // max 1-2 sentences
-    }
-  ]
-}
+Style rules (very important):
+- Write in the SAME language as the provided script.
+- Sound like a YouTube comment: short, punchy, conversational, no dissertations.
+- Prefer one-liners, occasional emoji ok 👍🔥 (but don't overdo it), no hashtags, no links, no disclaimers.
+- Be polite and non-toxic; no personal attacks or unsafe content.
+- Do NOT comment on grammar/spelling/typos/subtitles — this is spoken content. Focus ONLY on substance: clarity, hook, pacing, novelty, usefulness, credibility, entertainment, call-to-action.
+
+Output rules:
+- Return ONLY JSON matching the schema; no extra text or markdown.
+- Use 1-based line numbers relative to the exact text provided.
+- For overall.comment: a single short comment about the video as a whole (≤ 140 chars) and set liked=true/false.
+- For annotations: comment (≤ 120 chars) aimed at that exact line (a reply to that moment). Use category (praise/suggestion/issue/question) and severity (low/medium/high). Optionally add reaction like/dislike for that line.
 `;
 
 export async function POST(req: NextRequest) {
@@ -65,15 +69,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "text is required" }, { status: 400 });
     }
 
-    // Chunk locally for stable highlighting on the client.
-    const limitedText = text.slice(0, 8000); // soft cap
-    const chunks: TextChunk[] = chunkText(limitedText);
-    if (chunks.length === 0) {
-      return NextResponse.json(
-        { error: "Impossible de chunker le texte fourni" },
-        { status: 400 }
-      );
+    // Build line index from provided text (keep exact newlines)
+    const norm = text.replace(/\r\n|\r/g, "\n");
+    const parts = norm.split("\n");
+    const lines: IndexedLine[] = [];
+    let offset = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const t = parts[i];
+      const start = offset;
+      const end = start + t.length;
+      lines.push({ line: i + 1, start, end, text: t });
+      offset = end + 1; // +1 for the newline we split on
     }
+    const lineCount = Math.max(1, lines.length);
 
     // Fallback: if no personas provided, create a single neutral persona shell
     if (personas.length === 0) {
@@ -93,103 +101,79 @@ export async function POST(req: NextRequest) {
     const openai = getOpenAI();
     const model = getModel();
 
+    const AnnotationZ = z.object({
+      line: z.number().int().min(1),
+      comment: z.string().min(3).max(120),
+      category: z.enum(["praise", "suggestion", "issue", "question"]),
+      severity: z.enum(["low", "medium", "high"]),
+      reaction: z.enum(["like", "dislike"]).optional(),
+    });
+
+    const OverallZ = z.object({
+      comment: z.string().min(3).max(140),
+      liked: z.boolean(),
+    });
+
+    const PersonaAnalysisZ = z.object({
+      persona_name: z.string().min(1),
+      overall: OverallZ,
+      annotations: z.array(AnnotationZ).min(0).max(Math.min(50, lineCount)),
+    });
+
     const tasks = personas.map(async (p) => {
       const personaName = `${p.first_name} ${p.last_name}`.trim();
-      const personaCard = `PERSONA:\nName: ${personaName}\nCity: ${p.city}\nSalary (EUR): ${p.salary_eur}\nMini-description: ${p.mini_description}\nBio: ${p.biography}`;
+      const personaCard = `PERSONA\nName: ${personaName}\nCity: ${p.city || "-"}\nMini-description: ${p.mini_description || "-"}\nBio: ${p.biography || "-"}`;
 
-      // Build a compact representation of chunks to evaluate.
-      const items = chunks.map((c) => ({ index: c.index, text: c.text }));
-
-      const completion = await openai.responses.create({
+      const resp = await openai.responses.parse({
         model,
         input: [
           { role: "system", content: SYSTEM_ANALYST },
-          {
-            role: "system",
-            content:
-              `Speak as the persona. Base your judgment on their implicit tastes and preferences. Do not invent facts. If uncertain, use "uncertain".`,
-          },
           { role: "user", content: personaCard },
           {
             role: "user",
             content:
-              `${OUTPUT_SCHEMA_PROMPT}\n\nHere is the list of chunks to evaluate (by index):\n${JSON.stringify(items)}`,
+              `Analyze the following text as this persona. Use 1-based line numbers.\n\nTEXT (with line breaks):\n---\n${norm}\n---`,
           },
         ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "persona_analysis",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                persona_name: { type: "string" },
-                judgments: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      chunk_index: { type: "integer", minimum: 0 },
-                      verdict: { type: "string", enum: ["true", "false", "uncertain"] },
-                      tone: { type: "string", enum: ["exciting", "neutral", "boring"] },
-                      sentiment_score: { type: "number", minimum: 0, maximum: 100 },
-                      engagement_score: { type: "number", minimum: 0, maximum: 100 },
-                      confidence: { type: "number", minimum: 0, maximum: 1 },
-                      rationale: { type: "string" },
-                    },
-                    required: [
-                      "chunk_index",
-                      "verdict",
-                      "tone",
-                      "sentiment_score",
-                      "engagement_score",
-                      "confidence",
-                      "rationale",
-                    ],
-                  },
-                },
-              },
-              required: ["persona_name", "judgments"],
-            },
-          },
-        },
+        text: { format: zodTextFormat(PersonaAnalysisZ, "persona_line_analysis") },
       });
 
-      const raw = (completion as any).output_text ?? "{}";
-      let parsed: PersonaAnalysis = { persona_name: personaName, judgments: [] };
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        // Return empty structure on parse failure
-      }
-      // Coerce fields to the right types
-      parsed.persona_name = parsed.persona_name || personaName;
-      parsed.judgments = Array.isArray(parsed.judgments) ? parsed.judgments : [];
-      parsed.judgments = parsed.judgments.map((j) => ({
-        chunk_index: Number(j.chunk_index) || 0,
-        verdict: (j.verdict === "true" || j.verdict === "false" || j.verdict === "uncertain")
-          ? j.verdict
-          : "uncertain",
-        tone: (j.tone === "exciting" || j.tone === "neutral" || j.tone === "boring")
-          ? j.tone
-          : "neutral",
-        sentiment_score: Math.max(0, Math.min(100, Number(j.sentiment_score) || 0)),
-        engagement_score: Math.max(0, Math.min(100, Number(j.engagement_score) || 0)),
-        confidence: Math.max(0, Math.min(1, Number(j.confidence) || 0)),
-        rationale: (j.rationale ?? "").toString().slice(0, 500),
+      const parsed = (resp as any).output_parsed as z.infer<typeof PersonaAnalysisZ> | undefined;
+      let final: PersonaAnalysis = parsed
+        ? (parsed as unknown as PersonaAnalysis)
+        : {
+            persona_name: personaName,
+            overall: { comment: "", liked: false },
+            annotations: [],
+          };
+
+      // Clamp lines to range and coerce
+      final.persona_name = final.persona_name || personaName;
+      final.annotations = Array.isArray(final.annotations) ? final.annotations : [];
+      final.annotations = final.annotations.map((a) => ({
+        line: Math.max(1, Math.min(lineCount, Number(a.line) || 1)),
+        comment: (a.comment ?? "").toString().slice(0, 180),
+        category: (a.category === "praise" || a.category === "suggestion" || a.category === "issue" || a.category === "question")
+          ? a.category
+          : "suggestion",
+        severity: (a.severity === "low" || a.severity === "medium" || a.severity === "high")
+          ? a.severity
+          : "medium",
+        reaction: (a as any).reaction === "like" || (a as any).reaction === "dislike" ? (a as any).reaction : undefined,
       }));
-      return parsed;
+      // Trim excessive annotations
+      if (final.annotations.length > 50) final.annotations = final.annotations.slice(0, 50);
+      // Normalize overall
+      final.overall = final.overall || { comment: "", liked: false } as any;
+      final.overall.comment = (final.overall.comment ?? "").toString().slice(0, 140);
+      if (typeof (final.overall as any).liked !== 'boolean') (final.overall as any).liked = false;
+
+      return final;
     });
 
     const results = await Promise.all(tasks);
     return NextResponse.json(
-      {
-        chunks: chunks.map(({ index, start, end, text }) => ({ index, start, end, text })),
-        analyses: results,
-      },
+      { lines: lines.map(({ line, start, end, text }) => ({ line, start, end, text })), analyses: results },
       { status: 200 }
     );
   } catch (err: any) {

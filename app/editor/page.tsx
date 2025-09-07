@@ -7,7 +7,8 @@ import PersonaModal from '@/components/PersonaModal';
 import ConversationSidebar from '@/components/ConversationSidebar';
 import PersonaSidebar from '@/components/PersonaSidebar';
 import FloatingActions from '@/components/FloatingActions';
-import CommentSystem from '@/components/CommentSystem';
+// CommentSystem removed: rail-only AI comments
+import CommentsRail from '@/components/CommentsRail';
 import SelectionPopup from '@/components/SelectionPopup';
 import PersonaCommentModal from '@/components/PersonaCommentModal';
 import { ConversationStorage, Conversation, Message } from '@/lib/conversation-storage';
@@ -34,6 +35,8 @@ export default function EditorPage() {
   const [genRunning, setGenRunning] = useState(false);
   const [genProgress, setGenProgress] = useState(0);
   const [genList, setGenList] = useState<Persona[]>([]);
+  const [selectedText, setSelectedText] = useState<string>('');
+  const [insights, setInsights] = useState<any[]>([]);
   const totalToGenerate = 5;
   const [savedPops, setSavedPops] = useState<{ id: string; seed: string; createdAt: number; personas: Persona[] }[]>([]);
   const [selectedPopId, setSelectedPopId] = useState<string>('');
@@ -243,51 +246,76 @@ export default function EditorPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'API error');
 
-      const chunks: { index: number; start: number; end: number; text: string }[] = data.chunks || [];
+      const serverLines: { line: number; start: number; end: number; text: string }[] = data.lines || [];
       const analyses: any[] = data.analyses || [];
+      setInsights(analyses);
 
-      // Aggregate per chunk and rebuild HTML with colored spans
-      let html = '';
-      let cursor = 0;
-      const plain = text; // because we used innerText above
-      for (const c of chunks) {
-        // Guard against gaps
-        if (c.start > cursor) {
-          const gap = plain.slice(cursor, c.start);
-          html += gap
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\n/g, '<br/>');
+      type Ann = { persona: string; category: 'praise'|'suggestion'|'issue'|'question'; severity: 'low'|'medium'|'high'; comment: string; reaction?: 'like'|'dislike' };
+      const byLine = new Map<number, Ann[]>();
+      for (const a of analyses) {
+        const persona = String(a.persona_name || '');
+        const anns: any[] = Array.isArray(a.annotations) ? a.annotations : [];
+        for (const it of anns) {
+          const l = Number(it.line) || 1;
+          const ann: Ann = { persona, category: it.category, severity: it.severity, comment: String(it.comment || ''), reaction: it.reaction };
+          const arr = byLine.get(l) || [];
+          arr.push(ann);
+          byLine.set(l, arr);
         }
-        interface Judgment {
-          chunk_index: number;
-          sentiment_score: number;
-          tone?: string;
-        }
-        interface Analysis {
-          judgments?: Judgment[];
-        }
-        const perPersona = analyses.map((a: Analysis) => a.judgments?.find((j) => j.chunk_index === c.index)).filter(Boolean);
-        const scores = perPersona.map((j) => Number((j as Judgment).sentiment_score) || 0);
-        const tones = perPersona.map((j) => String((j as Judgment).tone || 'neutral'));
-        const cat = aggregateCategory(scores, tones);
-        const safe = c.text
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/\n/g, '<br/>');
-        html += `<span class="analysis-chunk analysis-${cat}">${safe}</span>`;
-        cursor = c.end;
       }
-      // trailing text
-      if (cursor < plain.length) {
-        const tail = plain.slice(cursor)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/\n/g, '<br/>');
-        html += tail;
+
+      const escapeHtml = (s: string) => s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const severityRank: Record<string, number> = { low: 1, medium: 2, high: 3 };
+      const categoryPriority: Record<string, number> = { issue: 4, suggestion: 3, question: 2, praise: 1 };
+
+      // Build threads from annotations (AI-only comments)
+      const docId = currentConversation?.id || 'default';
+      const allThreads = CommentStorage.getAllThreads(docId);
+      const byOffsetKey = new Map<string, any>();
+      for (const t of allThreads) byOffsetKey.set(`${t.startOffset}-${t.endOffset}`, t);
+
+      // Map line number to thread id
+      const lineInfo = new Map<number, {start:number;end:number;text:string}>();
+      serverLines.forEach((ln) => lineInfo.set(ln.line, { start: ln.start, end: ln.end, text: ln.text }));
+      const threadIdByLine = new Map<number, string>();
+
+      for (const [lineNo, anns] of byLine.entries()) {
+        const info = lineInfo.get(lineNo);
+        if (!info) continue;
+        const key = `${info.start}-${info.end}`;
+        let thread = byOffsetKey.get(key);
+        if (!thread) {
+          thread = CommentStorage.createThread(docId, info.start, info.end, info.text);
+        }
+        // Replace with AI comments for this run (ensure unique ids)
+        thread.comments = anns.map((a, idx) => ({
+          id: `comment_${Date.now()}_${Math.random().toString(36).slice(2)}_${idx}`,
+          text: a.comment,
+          author: a.persona,
+          authorType: 'ai' as const,
+          timestamp: new Date().toISOString(),
+        }));
+        thread.updatedAt = new Date().toISOString();
+        CommentStorage.saveThread(thread);
+        threadIdByLine.set(lineNo, thread.id);
+      }
+
+      window.dispatchEvent(new CustomEvent('threadsUpdated'));
+
+      let html = '';
+      const linesArr = serverLines.length > 0 ? serverLines : text.split('\n').map((t, i) => ({ line: i+1, text: t } as any));
+      for (const ln of linesArr) {
+        const anns = byLine.get(ln.line) || [];
+        const safe = escapeHtml(ln.text);
+        if (anns.length === 0) {
+          html += `${safe}<br/>`;
+        } else {
+          const threadId = threadIdByLine.get(ln.line) || '';
+          html += `<span class=\"line-annotated\" data-thread-id=\"${threadId}\">${safe}</span><br/>`;
+        }
       }
       setContent(html);
       setHasHighlights(true);
@@ -323,22 +351,18 @@ export default function EditorPage() {
     setGenList([]);
     setGenProgress(0);
     try {
-      const built: Persona[] = [];
-      for (let i = 0; i < totalToGenerate; i++) {
-        const res = await fetch('/api/personas', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ count: 1, seed: seed ?? '' })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'API error');
-        const persona = (data.personas && data.personas[0]) || null;
-        if (persona) {
-          built.push(persona);
-          setGenList([...built]);
-          setGenProgress((i + 1) / totalToGenerate);
-        }
-      }
+      // Single request to generate the whole population
+      const res = await fetch('/api/personas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: totalToGenerate, seed: seed ?? '' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'API error');
+      const built: Persona[] = Array.isArray(data?.personas) ? data.personas : [];
+      if (built.length === 0) throw new Error('No personas generated');
+      setGenList(built);
+      setGenProgress(1);
       setPersonas(built);
       // persist population
       const pop = { id: crypto.randomUUID(), seed: seed || '', createdAt: Date.now(), personas: built };
@@ -447,28 +471,27 @@ export default function EditorPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'API error');
 
-      // Add persona comments
+      // Add persona comments (use most severe annotation, fallback to overall summary)
       const analyses = data.analyses || [];
-      interface AnalysisResult {
-        judgments?: {
-          reasoning?: string;
-          rationale?: string;
-          sentiment_score: number;
-          tone?: string;
-        }[];
-      }
-      analyses.forEach((analysis: AnalysisResult, index: number) => {
-        if (analysis.judgments && analysis.judgments.length > 0) {
-          const judgment = analysis.judgments[0];
-          const persona = personas[index];
-          
-          CommentStorage.addComment(thread.id, {
-            text: `${judgment.reasoning || judgment.rationale} (Sentiment: ${judgment.sentiment_score}/100)`,
-            author: `${persona.first_name} ${persona.last_name}`,
-            authorType: 'ai',
-            personaId: persona.id
-          });
+      const sevRank: Record<string, number> = { low: 1, medium: 2, high: 3 };
+      analyses.forEach((analysis: any, index: number) => {
+        const persona = personas[index];
+        const anns: any[] = Array.isArray(analysis.annotations) ? analysis.annotations : [];
+        let textOut = '';
+        if (anns.length > 0) {
+          const top = anns.slice().sort((a, b) => sevRank[b.severity] - sevRank[a.severity])[0];
+          textOut = `[${top.category}/${top.severity}] ${top.comment}`;
+        } else if (analysis.overall?.comment) {
+          textOut = `Overall: ${analysis.overall.comment}`;
+        } else {
+          textOut = 'No specific feedback.';
         }
+        CommentStorage.addComment(thread.id, {
+          text: textOut,
+          author: `${persona.first_name} ${persona.last_name}`,
+          authorType: 'ai',
+          personaId: persona.id
+        });
       });
       
       // Clear selection
@@ -601,28 +624,27 @@ export default function EditorPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'API error');
 
-      // Add persona comments
+      // Add persona comments with new schema
       const analyses = data.analyses || [];
-      interface AnalysisResult {
-        judgments?: {
-          reasoning?: string;
-          rationale?: string;
-          sentiment_score: number;
-          tone?: string;
-        }[];
-      }
-      analyses.forEach((analysis: AnalysisResult, index: number) => {
-        if (analysis.judgments && analysis.judgments.length > 0) {
-          const judgment = analysis.judgments[0];
-          const persona = personas[index];
-          
-          CommentStorage.addComment(threadId, {
-            text: `${judgment.reasoning} (Sentiment: ${judgment.sentiment_score}/100, Tone: ${judgment.tone})`,
-            author: `${persona.first_name} ${persona.last_name}`,
-            authorType: 'ai',
-            personaId: persona.id
-          });
+      const sevRank: Record<string, number> = { low: 1, medium: 2, high: 3 };
+      analyses.forEach((analysis: any, index: number) => {
+        const persona = personas[index];
+        const anns: any[] = Array.isArray(analysis.annotations) ? analysis.annotations : [];
+        let textOut = '';
+        if (anns.length > 0) {
+          const top = anns.slice().sort((a, b) => sevRank[b.severity] - sevRank[a.severity])[0];
+          textOut = `[${top.category}/${top.severity}] ${top.comment}`;
+        } else if (analysis.overall?.comment) {
+          textOut = `Overall: ${analysis.overall.comment}`;
+        } else {
+          textOut = 'No specific feedback.';
         }
+        CommentStorage.addComment(threadId, {
+          text: textOut,
+          author: `${persona.first_name} ${persona.last_name}`,
+          authorType: 'ai',
+          personaId: persona.id
+        });
       });
     } catch (e) {
       console.error('Error during analysis:', e);
@@ -683,6 +705,7 @@ export default function EditorPage() {
         savedPops={savedPops}
         selectedPopId={selectedPopId}
         onLoadPopulation={loadPopulation}
+        insights={insights}
         onDeletePersonas={(indices) => {
           const newPersonas = personas.filter((_, i) => !indices.includes(i));
           setPersonas(newPersonas);
@@ -724,16 +747,14 @@ export default function EditorPage() {
         content={content}
         onContentChange={setContent}
       />
+      <CommentsRail
+        documentId={currentConversation?.id || 'default'}
+        editorRef={editorRef}
+        rightOffsetPx={personaSidebarOpen ? 336 : 16}
+      />
       <SelectionPopup
         onAnalyze={handleAnalyzeSelection}
         onRephrase={handleRephraseSelection}
-        onComment={handleCommentSelection}
-      />
-      <CommentSystem
-        documentId={currentConversation?.id || 'default'}
-        editorRef={editorRef}
-        personas={personas}
-        onAnalyzeSelection={handleAnalyzeSelectionForComment}
       />
       <FloatingActions
         onGeneratePopulation={openGenerateModal}
