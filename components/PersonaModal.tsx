@@ -90,20 +90,31 @@ export default function PersonaModal({ open, onClose, onConfirm, generating, pro
           )}
         </div>
         <div className="px-5 py-4 border-t border-gray-200 flex gap-2 justify-end">
-          <button
-            className={`px-3 py-1.5 rounded border ${canClose ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-            onClick={onClose}
-            disabled={!canClose}
-          >
-            {generating ? 'In progress…' : 'Close'}
-          </button>
-          <button
-            className={`px-3 py-1.5 rounded border ${generating ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-            onClick={() => onConfirm(seed.trim())}
-            disabled={!!generating}
-          >
-            Generate 5 personas
-          </button>
+          {generated.length > 0 && !generating ? (
+            <button
+              className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+              onClick={onClose}
+            >
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                className={`px-3 py-1.5 rounded border ${canClose ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                onClick={onClose}
+                disabled={!canClose}
+              >
+                {generating ? 'In progress…' : 'Cancel'}
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded border ${generating ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                onClick={() => onConfirm(seed.trim())}
+                disabled={!!generating}
+              >
+                Generate 5 personas
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

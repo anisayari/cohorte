@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Users, User, ChevronRight, ChevronLeft, Trash2, Square, CheckSquare, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Users, User, ChevronRight, ChevronLeft, Trash2, Square, CheckSquare, ThumbsUp, ThumbsDown, Plus } from 'lucide-react';
 import PersonaDetailsModal from './PersonaDetailsModal';
 import ConfirmModal from './ConfirmModal';
 import Tooltip from './Tooltip';
@@ -25,9 +25,11 @@ interface PersonaSidebarProps {
   selectedPopId?: string;
   onLoadPopulation?: (id: string) => void;
   insights?: { persona_name: string; overall?: { comment?: string; liked?: boolean } }[];
+  onGeneratePopulation?: () => void;
+  generating?: boolean;
 }
 
-export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePersonas, savedPops = [], selectedPopId = '', onLoadPopulation, insights = [] }: PersonaSidebarProps) {
+export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePersonas, savedPops = [], selectedPopId = '', onLoadPopulation, insights = [], onGeneratePopulation, generating = false }: PersonaSidebarProps) {
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
@@ -90,6 +92,25 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
       >
         <div className="flex flex-col h-full">
           <div className="p-5 border-b border-gray-100">
+            {/* Generate Persona Button - Only show when no personas exist */}
+            {onGeneratePopulation && personas.length === 0 && (
+              <button
+                onClick={onGeneratePopulation}
+                disabled={generating}
+                className={`
+                  w-full flex items-center justify-center gap-2 px-4 py-2.5 mb-4
+                  rounded-lg font-medium text-sm transition-all
+                  ${
+                    generating
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98]'
+                  }
+                `}
+              >
+                <Plus className={`w-4 h-4 ${generating ? 'animate-pulse' : ''}`} />
+                <span>{generating ? 'Generating...' : 'Generate personas'}</span>
+              </button>
+            )}
             {/* Tabs */}
             <div className="flex items-center gap-2 mb-4">
               <button
@@ -128,24 +149,39 @@ export default function PersonaSidebar({ personas, isOpen, onToggle, onDeletePer
                 <Users className="w-5 h-5 text-gray-700" />
                 <h3 className="font-semibold text-gray-900">{activeTab === 'personas' ? 'Generated personas' : 'Insights'}</h3>
               </div>
-              {activeTab === 'personas' && personas.length > 0 && onDeletePersonas && (
-                <Tooltip text={selectMode ? "Cancel selection" : "Select to delete"} position="bottom">
-                  <button
-                    onClick={() => {
-                      setSelectMode(!selectMode);
-                      if (selectMode) {
-                        setSelectedIndices(new Set());
-                      }
-                    }}
-                    className={`text-xs px-2 py-1 rounded-lg transition-colors ${
-                      selectMode 
-                        ? 'bg-gray-800 text-white' 
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {selectMode ? 'Cancel' : 'Select'}
-                  </button>
-                </Tooltip>
+              {activeTab === 'personas' && personas.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {onGeneratePopulation && (
+                    <Tooltip text="Generate new personas" position="bottom">
+                      <button
+                        onClick={onGeneratePopulation}
+                        disabled={generating}
+                        className="text-xs p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {onDeletePersonas && (
+                    <Tooltip text={selectMode ? "Cancel selection" : "Select to delete"} position="bottom">
+                      <button
+                        onClick={() => {
+                          setSelectMode(!selectMode);
+                          if (selectMode) {
+                            setSelectedIndices(new Set());
+                          }
+                        }}
+                        className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                          selectMode 
+                            ? 'bg-gray-800 text-white' 
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {selectMode ? 'Cancel' : 'Select'}
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
               )}
             </div>
             {activeTab === 'personas' && personas.length > 0 && (

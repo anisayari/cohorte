@@ -706,6 +706,8 @@ export default function EditorPage() {
         selectedPopId={selectedPopId}
         onLoadPopulation={loadPopulation}
         insights={insights}
+        onGeneratePopulation={openGenerateModal}
+        generating={genRunning}
         onDeletePersonas={(indices) => {
           const newPersonas = personas.filter((_, i) => !indices.includes(i));
           setPersonas(newPersonas);
@@ -757,10 +759,8 @@ export default function EditorPage() {
         onRephrase={handleRephraseSelection}
       />
       <FloatingActions
-        onGeneratePopulation={openGenerateModal}
         onAnalyze={handleAnalyze}
         onClearHighlights={handleClearHighlights}
-        generating={genRunning}
         analyzing={analyzing}
         canClear={hasHighlights}
       />
