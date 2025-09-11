@@ -58,7 +58,7 @@ export default function FloatingActions({
             }
           `}
         >
-          <BarChart3 className={`w-4 h-4 text-gray-700 ${analyzing ? 'animate-spin' : ''}`} />
+          <BarChart3 className={`w-4 h-4 text-gray-700`} />
           <span className="text-gray-800">
             {analyzing ? 'Analyzing...' : 'Analyze'}
           </span>
